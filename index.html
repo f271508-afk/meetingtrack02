@@ -1,0 +1,1827 @@
+<!DOCTYPE html>
+<html lang="zh-TW" class="h-full">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>會議暨交辦事項追蹤 Meeting Tracker</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- FontAwesome for icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Google Fonts Inter / Noto Sans TC -->
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <!-- html2pdf.js 用於匯出 PDF -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'Noto Sans TC', 'sans-serif'],
+                    },
+                }
+            }
+        }
+    </script>
+</head>
+<body class="bg-slate-50 text-slate-800 h-full font-sans antialiased selection:bg-indigo-500 selection:text-white">
+
+    <div class="min-h-full flex flex-col">
+        
+        <!-- Top Navigation Bar -->
+        <header class="bg-white border-b border-slate-200 sticky top-0 z-30 print:hidden">
+            <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+                <div class="flex items-center space-x-3">
+                    <div class="w-10 h-10 rounded-xl bg-indigo-600 flex items-center justify-center text-white shadow-md shadow-indigo-200">
+                        <i class="fa-solid fa-clipboard-check text-lg"></i>
+                    </div>
+                    <div>
+                        <h1 class="font-bold text-lg text-slate-900 tracking-tight">會議暨交辦事項追蹤</h1>
+                        <p class="text-xs text-slate-500">Meeting Tracker App • 今日 <span id="todayDisplay">—</span></p>
+                    </div>
+                </div>
+                <div class="flex items-center space-x-2">
+                    <!-- 匯入 JSON -->
+                    <button onclick="document.getElementById('importJsonInput').click()" class="inline-flex items-center px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm font-medium rounded-xl shadow-sm transition duration-150 ease-in-out border border-slate-200">
+                        <i class="fa-solid fa-file-import mr-2"></i> 匯入
+                    </button>
+                    <input type="file" id="importJsonInput" accept=".json,application/json" class="hidden" onchange="importJSON(event)">
+                    <!-- 匯出 JSON -->
+                    <button onclick="exportJSON()" class="inline-flex items-center px-3.5 py-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 text-sm font-medium rounded-xl shadow-sm transition duration-150 ease-in-out border border-emerald-200">
+                        <i class="fa-solid fa-file-export mr-2"></i> 匯出 JSON
+                    </button>
+                    <!-- 匯出 PDF -->
+                    <button onclick="exportPDF()" class="inline-flex items-center px-3.5 py-2 bg-rose-50 hover:bg-rose-100 text-rose-700 text-sm font-medium rounded-xl shadow-sm transition duration-150 ease-in-out border border-rose-200">
+                        <i class="fa-solid fa-file-pdf mr-2"></i> 匯出 PDF
+                    </button>
+                    <button onclick="openNewTaskModal()" class="inline-flex items-center px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium rounded-xl shadow-sm transition duration-150 ease-in-out">
+                        <i class="fa-solid fa-plus mr-2"></i> 新增
+                    </button>
+                    <div class="h-8 w-8 rounded-full bg-slate-200 flex items-center justify-center text-slate-700 font-semibold text-sm">
+                        王
+                    </div>
+                </div>
+            </div>
+        </header>
+
+        <!-- Main Content Area -->
+        <main class="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
+            
+            <!-- Status Counters -->
+            <section class="print:hidden">
+                <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+                    <div onclick="filterTasks('overdue')" class="cursor-pointer bg-white p-5 rounded-2xl border border-red-100 shadow-sm hover:shadow-md transition group relative overflow-hidden">
+                        <div class="absolute top-0 left-0 w-1.5 h-full bg-red-500"></div>
+                        <div class="flex items-center justify-between">
+                            <div>
+                                <p class="text-sm font-medium text-slate-500">已逾期</p>
+                                <h3 id="count-overdue" class="text-3xl font-bold text-slate-900 mt-1">0</h3>
+                            </div>
+                            <div class="w-12 h-12 rounded-xl bg-red-50 text-red-500 flex items-center justify-center text-xl group-hover:scale-110 transition">
+                                <i class="fa-solid fa-circle-exclamation"></i>
+                            </div>
+                        </div>
+                        <div class="mt-3 flex items-center text-xs text-red-600 font-medium">
+                            <span>需優先處理</span>
+                            <i class="fa-solid fa-arrow-right ml-1"></i>
+                        </div>
+                    </div>
+
+                    <div onclick="filterTasks('urgent')" class="cursor-pointer bg-white p-5 rounded-2xl border border-amber-100 shadow-sm hover:shadow-md transition group relative overflow-hidden">
+                        <div class="absolute top-0 left-0 w-1.5 h-full bg-amber-500"></div>
+                        <div class="flex items-center justify-between">
+                            <div>
+                                <p class="text-sm font-medium text-slate-500">3 天內到期</p>
+                                <h3 id="count-urgent" class="text-3xl font-bold text-slate-900 mt-1">0</h3>
+                            </div>
+                            <div class="w-12 h-12 rounded-xl bg-amber-50 text-amber-500 flex items-center justify-center text-xl group-hover:scale-110 transition">
+                                <i class="fa-solid fa-clock"></i>
+                            </div>
+                        </div>
+                        <div class="mt-3 flex items-center text-xs text-amber-600 font-medium">
+                            <span>即將屆期</span>
+                            <i class="fa-solid fa-arrow-right ml-1"></i>
+                        </div>
+                    </div>
+
+                    <div onclick="filterTasks('progress')" class="cursor-pointer bg-white p-5 rounded-2xl border border-blue-100 shadow-sm hover:shadow-md transition group relative overflow-hidden">
+                        <div class="absolute top-0 left-0 w-1.5 h-full bg-blue-500"></div>
+                        <div class="flex items-center justify-between">
+                            <div>
+                                <p class="text-sm font-medium text-slate-500">管制辦理中</p>
+                                <h3 id="count-progress" class="text-3xl font-bold text-slate-900 mt-1">0</h3>
+                            </div>
+                            <div class="w-12 h-12 rounded-xl bg-blue-50 text-blue-500 flex items-center justify-center text-xl group-hover:scale-110 transition">
+                                <i class="fa-solid fa-spinner"></i>
+                            </div>
+                        </div>
+                        <div class="mt-3 flex items-center text-xs text-blue-600 font-medium">
+                            <span>正常推進中</span>
+                            <i class="fa-solid fa-arrow-right ml-1"></i>
+                        </div>
+                    </div>
+
+                    <div onclick="filterTasks('completed')" class="cursor-pointer bg-white p-5 rounded-2xl border border-emerald-100 shadow-sm hover:shadow-md transition group relative overflow-hidden">
+                        <div class="absolute top-0 left-0 w-1.5 h-full bg-emerald-500"></div>
+                        <div class="flex items-center justify-between">
+                            <div>
+                                <p class="text-sm font-medium text-slate-500">解除管制</p>
+                                <h3 id="count-completed" class="text-3xl font-bold text-slate-900 mt-1">0</h3>
+                            </div>
+                            <div class="w-12 h-12 rounded-xl bg-emerald-50 text-emerald-500 flex items-center justify-center text-xl group-hover:scale-110 transition">
+                                <i class="fa-solid fa-circle-check"></i>
+                            </div>
+                        </div>
+                        <div class="mt-3 flex items-center text-xs text-emerald-600 font-medium">
+                            <span>近期解除</span>
+                            <i class="fa-solid fa-arrow-right ml-1"></i>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Department Action Items Section -->
+            <section class="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm print:border-0 print:shadow-none print:p-0">
+                <!-- Filter Controls Row -->
+                <div class="mb-6 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 print:hidden">
+                    <div>
+                        <label class="block text-xs font-medium text-slate-500 mb-1.5">
+                            <i class="fa-solid fa-location-dot text-indigo-500 mr-1"></i>案場查詢
+                        </label>
+                        <select id="siteFilterSelect" onchange="handleSiteFilterChange(this.value)" class="w-full px-3.5 py-2.5 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-300 bg-white cursor-pointer transition">
+                        </select>
+                    </div>
+
+                    <div>
+                        <label class="block text-xs font-medium text-slate-500 mb-1.5">
+                            <i class="fa-solid fa-user text-indigo-500 mr-1"></i>負責人查詢
+                        </label>
+                        <select id="ownerFilterSelect" onchange="handleOwnerFilterChange(this.value)" class="w-full px-3.5 py-2.5 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-300 bg-white cursor-pointer transition">
+                        </select>
+                    </div>
+
+                    <div>
+                        <label class="block text-xs font-medium text-slate-500 mb-1.5">
+                            <i class="fa-solid fa-circle-half-stroke text-indigo-500 mr-1"></i>狀態查詢
+                        </label>
+                        <select id="statusFilterSelect" onchange="handleStatusFilterChange(this.value)" class="w-full px-3.5 py-2.5 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-300 bg-white cursor-pointer transition">
+                            <option value="all">全部狀態</option>
+                            <option value="overdue">已逾期</option>
+                            <option value="urgent">3天內到期</option>
+                            <option value="progress">管制辦理中</option>
+                            <option value="completed">解除管制</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6 print:hidden">
+                    <div class="flex items-center space-x-2">
+                        <div class="w-8 h-8 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center">
+                            <i class="fa-solid fa-list-check"></i>
+                        </div>
+                        <h2 class="text-lg font-bold text-slate-900">會議暨交辦事項追蹤</h2>
+                        <span id="resultCount" class="text-xs font-medium text-slate-400 bg-slate-100 px-2.5 py-1 rounded-lg"></span>
+                        <button onclick="resetFilters()" class="text-xs font-medium text-indigo-600 hover:text-indigo-800 bg-indigo-50 hover:bg-indigo-100 px-3 py-1.5 rounded-lg transition flex items-center space-x-1">
+                            <i class="fa-solid fa-rotate-left"></i>
+                            <span>重設</span>
+                        </button>
+                    </div>
+
+                    <div class="flex items-center bg-slate-100 p-1 rounded-xl border border-slate-200 self-start sm:self-auto">
+                        <button onclick="switchView('grid')" id="view-grid-btn" class="px-3.5 py-2 rounded-lg text-sm font-medium text-slate-600 hover:text-slate-800 transition flex items-center space-x-1.5">
+                            <i class="fa-solid fa-border-all mr-1"></i> 網格
+                        </button>
+                        <button onclick="switchView('list')" id="view-list-btn" class="px-3.5 py-2 rounded-lg text-sm font-medium bg-white text-slate-800 shadow-xs transition flex items-center space-x-1.5">
+                            <i class="fa-solid fa-table-list mr-1"></i> 列表
+                        </button>
+                    </div>
+                </div>
+
+                <div id="tasks-container" class="hidden grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5"></div>
+
+                <div id="tasks-table-container" class="overflow-x-auto"></div>
+            </section>
+
+        </main>
+
+        <footer class="bg-white border-t border-slate-200 py-6 mt-auto print:hidden">
+            <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center text-xs text-slate-400">
+                會議暨交辦事項追蹤 Meeting Tracker © 2026 • 確保每項會議決議確實落地執行
+            </div>
+        </footer>
+
+    </div>
+
+    <!-- New / Edit Task Modal -->
+    <div id="newTaskModal" class="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-sm hidden print:hidden">
+        <div class="bg-white rounded-2xl max-w-lg w-full mx-4 shadow-2xl border border-slate-100 overflow-hidden">
+            <div class="px-6 py-4 bg-slate-50 border-b border-slate-100 flex items-center justify-between">
+                <h3 id="modalTitle" class="font-bold text-slate-900">新增會議暨交辦事項追蹤</h3>
+                <button onclick="closeNewTaskModal()" class="text-slate-400 hover:text-slate-600 p-1 rounded-lg">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div class="p-6 space-y-4 max-h-[70vh] overflow-y-auto">
+                <input type="hidden" id="editTaskId" value="">
+                <div>
+                    <label class="block text-xs font-medium text-slate-500 mb-1">
+                        <i class="fa-solid fa-users text-indigo-500 mr-1"></i>會議暨交辦來源（可選擇 / 可自訂 / 可刪除）
+                    </label>
+                    <div class="flex items-center space-x-2">
+                        <select id="newTaskMeetingName" class="flex-1 px-3 py-2 border border-slate-200 rounded-xl text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500"></select>
+                        <button type="button" onclick="deleteMeetingNameOption()" title="刪除目前選取的會議暨交辦來源選項" class="px-3 py-2 bg-red-50 hover:bg-red-100 text-red-600 rounded-xl text-sm transition flex-shrink-0">
+                            <i class="fa-solid fa-trash"></i>
+                        </button>
+                    </div>
+                    <div class="mt-2 flex items-center space-x-2">
+                        <input type="text" id="newMeetingNameCustomInput" placeholder="自訂會議暨交辦來源，按 Enter 新增" class="flex-1 px-3 py-2 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                        <button type="button" onclick="addCustomMeetingName()" class="px-3 py-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-xl text-sm font-medium transition flex-shrink-0">
+                            <i class="fa-solid fa-plus"></i>
+                        </button>
+                    </div>
+                </div>
+
+                <div>
+                    <label class="block text-xs font-medium text-slate-500 mb-1">建檔日期</label>
+                    <input type="date" id="newTaskMeetingTime" value="2026-09-25" class="w-full px-3 py-2 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                </div>
+
+                <div>
+                    <label class="block text-xs font-medium text-slate-500 mb-1">
+                        <i class="fa-solid fa-location-dot text-indigo-500 mr-1"></i>案場（可複選 / 可自訂 / 可刪除）
+                    </label>
+                    <div id="siteCheckboxContainer" class="border border-slate-200 rounded-xl p-3 space-y-2 max-h-36 overflow-y-auto bg-slate-50/50"></div>
+                    <div class="mt-2 flex items-center space-x-2">
+                        <input type="text" id="newSiteCustomInput" placeholder="自訂案場名稱，按 Enter 新增" class="flex-1 px-3 py-2 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                        <button onclick="addCustomSite()" class="px-3 py-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-xl text-sm font-medium transition flex-shrink-0">
+                            <i class="fa-solid fa-plus"></i>
+                        </button>
+                    </div>
+                    <div id="selectedSitesPreview" class="mt-2 flex flex-wrap gap-1.5"></div>
+                </div>
+
+                <div>
+                    <label class="block text-xs font-medium text-slate-500 mb-1">
+                        <i class="fa-solid fa-user text-indigo-500 mr-1"></i>負責人（與案場連動，可複選 / 可自訂 / 可刪除）
+                    </label>
+                    <div id="ownerLinkHint" class="mb-1.5 text-[11px] text-slate-400 italic">
+                        <i class="fa-solid fa-circle-info mr-1"></i>請先選擇案場，負責人清單會依案場自動更新
+                    </div>
+                    <div id="ownerCheckboxContainer" class="border border-slate-200 rounded-xl p-3 space-y-2 max-h-36 overflow-y-auto bg-slate-50/50"></div>
+                    <div class="mt-2 flex items-center space-x-2">
+                        <input type="text" id="newOwnerCustomInput" placeholder="自訂負責人姓名，按 Enter 新增" class="flex-1 px-3 py-2 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                        <button onclick="addCustomOwner()" class="px-3 py-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-xl text-sm font-medium transition flex-shrink-0">
+                            <i class="fa-solid fa-plus"></i>
+                        </button>
+                    </div>
+                    <div id="selectedOwnersPreview" class="mt-2 flex flex-wrap gap-1.5"></div>
+                </div>
+
+                <div>
+                    <label class="block text-xs font-medium text-slate-500 mb-1">會議暨交辦內容</label>
+                    <textarea id="newTaskDecision" rows="3" placeholder="請輸入會議暨交辦內容..." class="w-full px-3 py-2 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"></textarea>
+                </div>
+                <div>
+                    <label class="block text-xs font-medium text-slate-500 mb-1">執行進度（回覆說明 / 進度備註）</label>
+                    <textarea id="newTaskProgress" rows="3" placeholder="請輸入目前進度或相關回覆說明..." class="w-full px-3 py-2 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"></textarea>
+                </div>
+                <div>
+                    <label class="block text-xs font-medium text-slate-500 mb-1">管制作業</label>
+                    <div class="space-y-3">
+                        <div>
+                            <label class="block text-[11px] font-medium text-slate-400 mb-1">預定完成日</label>
+                            <input type="date" id="newTaskDate" value="2026-09-25" class="w-full px-3 py-2 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                        </div>
+                        <div>
+                            <label class="block text-[11px] font-medium text-slate-400 mb-1">急迫性狀態（根據預定完成日與結案狀態自動判斷）</label>
+                            <div class="w-full px-3 py-2.5 bg-slate-100 border border-slate-200 rounded-xl text-sm font-semibold text-slate-700 flex items-center justify-between">
+                                <span id="autoStatusDisplay" class="flex items-center">
+                                    <span class="w-2.5 h-2.5 rounded-full bg-amber-500 mr-2"></span> 3 天內到期
+                                </span>
+                                <span class="text-xs font-normal text-slate-400 bg-white px-2 py-0.5 rounded border border-slate-200">系統自動計算</span>
+                            </div>
+                        </div>
+                        <div class="flex items-center space-x-2">
+                            <input type="checkbox" id="newTaskIsCompleted" class="w-4 h-4 text-indigo-600 rounded border-slate-300 focus:ring-indigo-500">
+                            <label for="newTaskIsCompleted" class="text-xs font-medium text-slate-700 cursor-pointer">標記為解除管制 (完成)</label>
+                        </div>
+                    </div>
+                </div>
+                <div>
+                    <label class="block text-xs font-medium text-slate-500 mb-1">附件上傳</label>
+                    <div class="flex items-center space-x-2">
+                        <input type="file" id="newTaskFile" class="w-full text-xs text-slate-500 file:mr-3 file:py-2 file:px-3 file:rounded-xl file:border-0 file:text-xs file:font-semibold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100 cursor-pointer border border-slate-200 rounded-xl">
+                    </div>
+                    <p id="existingFileName" class="text-[11px] text-slate-400 mt-1 hidden">目前已有附件：<span></span></p>
+                </div>
+            </div>
+            <div class="px-6 py-4 bg-slate-50 border-t border-slate-100 flex items-center justify-end space-x-2">
+                <button onclick="closeNewTaskModal()" class="px-4 py-2 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded-xl text-xs font-medium transition">
+                    取消
+                </button>
+                <button onclick="saveTask()" class="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-medium transition shadow-sm">
+                    確認儲存
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Edit Reply Modal -->
+    <div id="editReplyModal" class="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-sm hidden print:hidden">
+        <div class="bg-white rounded-2xl max-w-md w-full mx-4 shadow-2xl border border-slate-100 overflow-hidden">
+            <div class="px-6 py-4 bg-slate-50 border-b border-slate-100 flex items-center justify-between">
+                <h3 class="font-bold text-slate-900">
+                    <i class="fa-solid fa-reply text-indigo-500 mr-2"></i>編輯執行進度與附件
+                </h3>
+                <button onclick="closeEditReplyModal()" class="text-slate-400 hover:text-slate-600 p-1 rounded-lg">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div class="p-6 space-y-4">
+                <input type="hidden" id="editReplyTaskId" value="">
+                <div class="bg-indigo-50/60 border border-indigo-100 rounded-xl p-3">
+                    <p class="text-xs font-medium text-slate-500 mb-0.5">會議暨交辦內容</p>
+                    <p id="editReplyTaskTitle" class="text-sm font-bold text-slate-800">—</p>
+                </div>
+                <div>
+                    <label class="block text-xs font-medium text-slate-500 mb-1">執行進度 / 進度備註</label>
+                    <textarea id="editReplyText" rows="3" placeholder="請輸入目前進度或相關回覆說明..." class="w-full px-3 py-2 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"></textarea>
+                </div>
+                <div>
+                    <label class="block text-xs font-medium text-slate-500 mb-1">附件檔案</label>
+                    <div id="editReplyExistingFile" class="hidden mb-2 flex items-center justify-between bg-indigo-50/70 px-3.5 py-2 rounded-xl border border-indigo-100">
+                        <span class="flex items-center space-x-2 text-sm text-indigo-700 font-medium truncate">
+                            <i class="fa-solid fa-paperclip text-indigo-500"></i>
+                            <span id="editReplyExistingFileName" class="truncate">—</span>
+                        </span>
+                        <button onclick="removeReplyFile()" class="text-red-500 hover:text-red-700 text-xs font-semibold px-2 py-1 rounded-lg hover:bg-red-50 transition flex-shrink-0 ml-2" title="移除附件">
+                            <i class="fa-solid fa-trash-can mr-0.5"></i> 移除
+                        </button>
+                    </div>
+                    <input type="file" id="editReplyFile" class="w-full text-xs text-slate-500 file:mr-3 file:py-2 file:px-3 file:rounded-xl file:border-0 file:text-xs file:font-semibold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100 cursor-pointer border border-slate-200 rounded-xl">
+                    <p class="text-[11px] text-slate-400 mt-1.5"><i class="fa-solid fa-circle-info mr-1"></i>選擇新檔案將取代目前附件；若不上傳新檔則保留原附件。</p>
+                </div>
+            </div>
+            <div class="px-6 py-4 bg-slate-50 border-t border-slate-100 flex items-center justify-end space-x-2">
+                <button onclick="closeEditReplyModal()" class="px-4 py-2 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded-xl text-xs font-medium transition">
+                    取消
+                </button>
+                <button onclick="saveReply()" class="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-medium transition shadow-sm">
+                    <i class="fa-solid fa-check mr-1"></i> 儲存進度
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const siteOwnerMap = {
+            "小檜溪D": ["王淳奕主任"],
+            "圓山B": ["簡毅翔主任"],
+            "工務管理部": ["王淳奕主任", "簡毅翔主任"],
+            "圓山工區": ["蔡澤森經理", "連峻毅襄理", "蔡育紘主任", "簡毅翔主任"]
+        };
+
+        let tasks = [
+            {
+                id: 1,
+                meetingName: "雙週工務會議",
+                meetingTime: "2026-08-04",
+                meetingTimeDisplay: "115/08/04",
+                sites: ["小檜溪D"],
+                owners: ["王淳奕主任"],
+                decision: "小檜溪D壁地磚未按照規定貼，工務所實施教育訓練，會議已提出該區域需敲除重作",
+                progress: "8/18雙週工務會議回覆已實施教育訓練，後續回傳資料。",
+                rawDate: "2026-09-23",
+                dueDate: "9/23",
+                status: "progress",
+                statusText: "管制辦理中",
+                fileName: ""
+            },
+            {
+                id: 2,
+                meetingName: "雙週工務會議",
+                meetingTime: "2026-08-04",
+                meetingTimeDisplay: "115/08/04",
+                sites: ["圓山B", "小檜溪D", "工務管理部"],
+                owners: ["簡毅翔主任", "王淳奕主任"],
+                decision: "圓山B及小檜溪D-磁磚拉拔不合格，拉拔不合格應約廠商開會討論決議後續處理方式。",
+                progress: "小檜溪D-8/20EIP回傳決議後處理方式。圓山B-8/20EIP回傳決議後處理方式。",
+                rawDate: "2026-09-23",
+                dueDate: "9/23",
+                status: "progress",
+                statusText: "管制辦理中",
+                fileName: ""
+            },
+            {
+                id: 3,
+                meetingName: "雙週工務會議",
+                meetingTime: "2026-08-04",
+                meetingTimeDisplay: "115/08/04",
+                sites: ["工務管理部"],
+                owners: [],
+                decision: "採購碎木機，請採發協助推評估採購碎木機，後續新案改建案都能使用。",
+                progress: "工地已呈送簽呈，且安排實地參訪。",
+                rawDate: "2026-09-23",
+                dueDate: "9/23",
+                status: "progress",
+                statusText: "管制辦理中",
+                fileName: ""
+            },
+            {
+                id: 4,
+                meetingName: "雙週工務會議",
+                meetingTime: "2026-08-18",
+                meetingTimeDisplay: "115/08/18",
+                sites: ["圓山工區"],
+                owners: ["蔡澤森經理", "連峻毅襄理", "蔡育紘主任", "簡毅翔主任"],
+                decision: "●圓山AB ●圓山工區應於工務所公佈欄張貼:請各工種應於1150831前提供追加項目及金額。(工務所全部人員及各工種本案負責人，簽名後之公告EIP給總經理及二位副總)",
+                progress: "1150828完成EIP寄發",
+                rawDate: "2026-09-23",
+                dueDate: "9/23",
+                status: "progress",
+                statusText: "管制辦理中",
+                fileName: ""
+            },
+            {
+                id: 5,
+                meetingName: "雙週工務會議",
+                meetingTime: "2026-08-18",
+                meetingTimeDisplay: "115/08/18",
+                sites: ["工務管理部"],
+                owners: [],
+                decision: "●工務管理部 ●工務管理部會議中討論的水泥砂配比，依公斤數去計算比例，整理後宣導各工地。",
+                progress: "查詢方式:EIP營建專區\\大宗物料分析\\水泥砂配比，工務管理部協助換算成公斤中",
+                rawDate: "2026-09-23",
+                dueDate: "9/23",
+                status: "completed",
+                statusText: "解除管制",
+                fileName: ""
+            },
+            {
+                id: 6,
+                meetingName: "雙週工務會議",
+                meetingTime: "2026-08-18",
+                meetingTimeDisplay: "115/08/18",
+                sites: ["工務管理部"],
+                owners: [],
+                decision: "●工務管理部 ●圓山工區屋頂太陽能板尚有進步空間，後續預算採發應提供專業承商規範及標準。",
+                progress: "1150831回饋",
+                rawDate: "2026-09-23",
+                dueDate: "9/23",
+                status: "progress",
+                statusText: "管制辦理中",
+                fileName: ""
+            },
+            {
+                id: 7,
+                meetingName: "雙週工務會議",
+                meetingTime: "2026-08-18",
+                meetingTimeDisplay: "115/08/18",
+                sites: ["工務管理部"],
+                owners: [],
+                decision: "●工務管理部 ●室裝以外的成本請木曦協理協助回覆預估編列預算，(庭園景觀修整、大宗項目修整、外牆清潔、油漆修改、電扶梯拆除)，需要回覆董事長。",
+                progress: "1150831完成預算編列初稿",
+                rawDate: "2026-09-23",
+                dueDate: "9/23",
+                status: "progress",
+                statusText: "管制辦理中",
+                fileName: ""
+            },
+        ];
+
+        function toRocDate(rawDate) {
+            if (!rawDate) return '—';
+            const p = rawDate.split('-');
+            if (p.length !== 3) return '—';
+            const y = parseInt(p[0]) - 1911;
+            return `${y}/${p[1].padStart(2, '0')}/${p[2].padStart(2, '0')}`;
+        }
+
+        let meetingNames = ["雙週工務會議"];
+
+        function renderMeetingNameSelect(selected) {
+            const sel = document.getElementById('newTaskMeetingName');
+            if (selected && !meetingNames.includes(selected)) meetingNames.push(selected);
+            sel.innerHTML = meetingNames.map(n => `<option value="${n}">${n}</option>`).join('');
+            if (selected) sel.value = selected;
+        }
+
+        function addCustomMeetingName() {
+            const input = document.getElementById('newMeetingNameCustomInput');
+            const val = input.value.trim();
+            if (!val) return;
+            if (!meetingNames.includes(val)) meetingNames.push(val);
+            input.value = '';
+            renderMeetingNameSelect(val);
+        }
+
+        function deleteMeetingNameOption() {
+            const sel = document.getElementById('newTaskMeetingName');
+            const val = sel.value;
+            if (!val) return;
+            if (!confirm(`確定要從選單刪除「${val}」嗎？\n（已使用此名稱的既有事項不受影響）`)) return;
+            meetingNames = meetingNames.filter(n => n !== val);
+            renderMeetingNameSelect();
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            const inp = document.getElementById('newMeetingNameCustomInput');
+            if (inp) inp.addEventListener('keydown', e => {
+                if (e.key === 'Enter') { e.preventDefault(); addCustomMeetingName(); }
+            });
+        });
+
+        let currentFilter = 'all';
+        let currentView = 'list';
+        let currentSite = 'all';
+        let currentOwner = 'all';
+
+        let selectedSites = [];
+        let selectedOwners = [];
+
+        // 今日（本機日期，00:00）
+        function getToday() {
+            const n = new Date();
+            return new Date(n.getFullYear(), n.getMonth(), n.getDate());
+        }
+
+        function pad2(n) { return String(n).padStart(2, '0'); }
+
+        function todayISO() {
+            const t = getToday();
+            return `${t.getFullYear()}-${pad2(t.getMonth() + 1)}-${pad2(t.getDate())}`;
+        }
+
+        // 預定完成日與今日相差天數（正=尚餘、0=今日、負=已逾期）；無日期回傳 null
+        function daysUntil(rawDateStr) {
+            if (!rawDateStr) return null;
+            const p = rawDateStr.split('-').map(Number);
+            if (p.length !== 3 || p.some(isNaN)) return null;
+            const target = new Date(p[0], p[1] - 1, p[2]);
+            return Math.round((target - getToday()) / 86400000);
+        }
+
+        function calculateTaskStatus(rawDateStr, isCompleted) {
+            if (isCompleted) {
+                return { status: 'completed', statusText: '解除管制' };
+            }
+            const diffDays = daysUntil(rawDateStr);
+            if (diffDays === null) return { status: 'progress', statusText: '管制辦理中' };
+
+            if (diffDays < 0) {
+                return { status: 'overdue', statusText: '已逾期' };
+            } else if (diffDays <= 3) {
+                return { status: 'urgent', statusText: '3天內到期' };
+            } else {
+                return { status: 'progress', statusText: '管制辦理中' };
+            }
+        }
+
+        // 以今日重新計算所有未解除管制事項的狀態
+        function refreshTaskStatuses() {
+            tasks.forEach(t => {
+                const c = calculateTaskStatus(t.rawDate, t.status === 'completed');
+                t.status = c.status;
+                t.statusText = c.statusText;
+            });
+        }
+
+        // 與今日相差天數的提示（HTML）
+        function dueCountdownHTML(task) {
+            if (task.status === 'completed') {
+                return '<div class="text-xs font-bold text-emerald-600 mt-0.5">已解除管制</div>';
+            }
+            const d = daysUntil(task.rawDate);
+            if (d === null) return '';
+            if (d < 0) return `<div class="text-xs font-bold text-red-600 mt-0.5">逾期 ${-d} 天</div>`;
+            if (d === 0) return '<div class="text-xs font-bold text-amber-600 mt-0.5">今日到期</div>';
+            if (d <= 3) return `<div class="text-xs font-bold text-amber-600 mt-0.5">剩 ${d} 天</div>`;
+            return `<div class="text-xs font-bold text-blue-600 mt-0.5">剩 ${d} 天</div>`;
+        }
+
+        function dueCountdownText(task) {
+            if (task.status === 'completed') return '已解除管制';
+            const d = daysUntil(task.rawDate);
+            if (d === null) return '';
+            if (d < 0) return `逾期 ${-d} 天`;
+            if (d === 0) return '今日到期';
+            return `剩 ${d} 天`;
+        }
+
+        function updateCounters() {
+            const counts = {
+                overdue: tasks.filter(t => t.status === 'overdue').length,
+                urgent: tasks.filter(t => t.status === 'urgent').length,
+                progress: tasks.filter(t => t.status === 'progress').length,
+                completed: tasks.filter(t => t.status === 'completed').length,
+            };
+
+            document.getElementById('count-overdue').innerText = counts.overdue;
+            document.getElementById('count-urgent').innerText = counts.urgent;
+            document.getElementById('count-progress').innerText = counts.progress;
+            document.getElementById('count-completed').innerText = counts.completed;
+        }
+
+        // ========================================
+        // 匯出 JSON
+        // ========================================
+        function exportJSON() {
+            const exportData = {
+                exportedAt: new Date().toISOString(),
+                exportedAtDisplay: new Date().toLocaleString('zh-TW', { hour12: false }),
+                version: '1.0',
+                siteOwnerMap: siteOwnerMap,
+                meetingNames: meetingNames,
+                tasks: tasks
+            };
+
+            const dataStr = JSON.stringify(exportData, null, 2);
+            const blob = new Blob([dataStr], { type: 'application/json;charset=utf-8' });
+            const url = URL.createObjectURL(blob);
+
+            const now = new Date();
+            const filename = `會議暨交辦事項追蹤_${now.getFullYear()}${String(now.getMonth()+1).padStart(2,'0')}${String(now.getDate()).padStart(2,'0')}.json`;
+
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = filename;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+
+            showToast('✅ 已匯出 JSON', `檔名：${filename}`, 'emerald');
+        }
+
+        // ========================================
+        // 匯入 JSON
+        // ========================================
+        function importJSON(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                try {
+                    const imported = JSON.parse(e.target.result);
+
+                    if (!imported.tasks || !Array.isArray(imported.tasks)) {
+                        alert('匯入失敗：JSON 格式不正確，缺少 tasks 陣列。');
+                        return;
+                    }
+
+                    let importedTasks = imported.tasks.map(t => {
+                        return {
+                            id: t.id || 0,
+                            meetingName: t.meetingName || '',
+                            meetingTime: t.meetingTime || '2026-01-01',
+                            meetingTimeDisplay: t.meetingTimeDisplay || t.meetingTime || '—',
+                            sites: Array.isArray(t.sites) ? t.sites : (t.site ? [t.site] : []),
+                            owners: Array.isArray(t.owners) ? t.owners : (t.owner ? [t.owner] : []),
+                            decision: t.decision || t.title || t.meeting || '',
+                            progress: t.progress || t.reply || '',
+                            rawDate: t.rawDate || '2026-09-23',
+                            dueDate: t.dueDate || '—',
+                            status: t.status || 'progress',
+                            statusText: t.statusText || '管制辦理中',
+                            fileName: t.fileName || ''
+                        };
+                    });
+
+                    const confirmMsg = `確定要匯入 ${importedTasks.length} 筆資料嗎？\n\n` +
+                                       `匯入後將覆蓋現有全部資料（共 ${tasks.length} 筆）。\n\n` +
+                                       `建議先匯出目前資料作為備份。`;
+
+                    if (!confirm(confirmMsg)) {
+                        event.target.value = '';
+                        return;
+                    }
+
+                    tasks = importedTasks;
+
+                    if (Array.isArray(imported.meetingNames)) {
+                        meetingNames = imported.meetingNames.filter(n => typeof n === 'string' && n.trim());
+                    }
+                    importedTasks.forEach(t => {
+                        if (t.meetingName && !meetingNames.includes(t.meetingName)) meetingNames.push(t.meetingName);
+                    });
+
+                    if (imported.siteOwnerMap && typeof imported.siteOwnerMap === 'object') {
+                        Object.keys(imported.siteOwnerMap).forEach(site => {
+                            siteOwnerMap[site] = imported.siteOwnerMap[site];
+                        });
+                    }
+
+                    renderSiteFilter();
+                    renderOwnerFilter();
+                    renderTasks('all');
+
+                    showToast('✅ 匯入成功', `已載入 ${importedTasks.length} 筆追蹤事項`, 'emerald');
+
+                } catch (err) {
+                    alert('匯入失敗：' + err.message);
+                }
+                event.target.value = '';
+            };
+            reader.readAsText(file, 'UTF-8');
+        }
+
+        // ========================================
+        // 匯出 PDF
+        // ========================================
+        function getFilteredTasks() {
+            return tasks.filter(t => {
+                if (currentFilter !== 'all' && t.status !== currentFilter) return false;
+                if (currentSite !== 'all' && !t.sites.includes(currentSite)) return false;
+                if (currentOwner !== 'all' && !t.owners.includes(currentOwner)) return false;
+                return true;
+            });
+        }
+
+        function getFilterDescription() {
+            const statusMap = { overdue: '已逾期', urgent: '3天內到期', progress: '管制辦理中', completed: '解除管制' };
+            const parts = [];
+            if (currentFilter !== 'all') parts.push(`狀態：${statusMap[currentFilter] || currentFilter}`);
+            if (currentSite !== 'all') parts.push(`案場：${currentSite}`);
+            if (currentOwner !== 'all') parts.push(`負責人：${currentOwner}`);
+            return parts.join('　');
+        }
+
+        function exportPDF() {
+            refreshTaskStatuses();
+            const exportTasks = getFilteredTasks();
+            if (exportTasks.length === 0) {
+                alert('目前篩選範圍內沒有可匯出的事項');
+                return;
+            }
+            const filterDesc = getFilterDescription();
+            const now = new Date();
+            const dateStr = `${now.getFullYear()}/${String(now.getMonth()+1).padStart(2,'0')}/${String(now.getDate()).padStart(2,'0')} ${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`;
+
+            const overlay = document.createElement('div');
+            overlay.id = 'pdfOverlay';
+            overlay.style.cssText = `
+                position: fixed;
+                inset: 0;
+                background: rgba(15,23,42,0.75);
+                z-index: 99998;
+                overflow: auto;
+                padding: 30px 20px;
+                display: flex;
+                justify-content: center;
+                align-items: flex-start;
+            `;
+
+            const printContainer = document.createElement('div');
+            printContainer.id = 'pdfPrintContainer';
+            printContainer.style.cssText = `
+                width: 1100px;
+                background: #ffffff;
+                padding: 28px;
+                font-family: "Noto Sans TC", "Inter", sans-serif;
+                color: #1e293b;
+                border-radius: 8px;
+                box-shadow: 0 25px 50px rgba(0,0,0,0.4);
+            `;
+
+            let html = `
+                <div style="text-align:center; margin-bottom:20px;">
+                    <h1 style="font-size:24px; font-weight:bold; color:#1e293b; margin:0 0 8px 0;">中福/中毅會議暨交辦事項追蹤</h1>
+                    <p style="font-size:12px; color:#64748b; margin:0;">列印時間：${dateStr}</p>
+                    <p style="font-size:12px; color:#64748b; margin:4px 0 0 0;">${filterDesc ? `篩選範圍（${filterDesc}），共 ${exportTasks.length} 筆追蹤事項` : `共 ${exportTasks.length} 筆追蹤事項`}</p>
+                    <hr style="border:0; border-top:1.5px solid #cbd5e1; margin:14px 0;">
+                </div>
+            `;
+
+            html += `
+                <table style="width:100%; border-collapse:collapse; font-size:11px; table-layout:fixed;">
+                    <colgroup>
+                        <col style="width:4%">
+                        <col style="width:10%">
+                        <col style="width:8%">
+                        <col style="width:15%">
+                        <col style="width:23%">
+                        <col style="width:21%">
+                        <col style="width:9%">
+                        <col style="width:10%">
+                    </colgroup>
+                    <thead>
+                        <tr style="background:#f1f5f9;">
+                            <th style="border:1px solid #cbd5e1; padding:8px 6px; text-align:left; font-weight:bold;">#</th>
+                            <th style="border:1px solid #cbd5e1; padding:8px 6px; text-align:left; font-weight:bold;">會議暨交辦來源</th>
+                            <th style="border:1px solid #cbd5e1; padding:8px 6px; text-align:left; font-weight:bold;">建檔日期</th>
+                            <th style="border:1px solid #cbd5e1; padding:8px 6px; text-align:left; font-weight:bold;">案場／負責人</th>
+                            <th style="border:1px solid #cbd5e1; padding:8px 6px; text-align:left; font-weight:bold;">會議暨交辦內容</th>
+                            <th style="border:1px solid #cbd5e1; padding:8px 6px; text-align:left; font-weight:bold;">執行進度</th>
+                            <th style="border:1px solid #cbd5e1; padding:8px 6px; text-align:left; font-weight:bold;">預定完成日</th>
+                            <th style="border:1px solid #cbd5e1; padding:8px 6px; text-align:left; font-weight:bold;">管制作業</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+            `;
+
+            exportTasks.forEach((task, index) => {
+                let statusColor = '#475569';
+                let statusBg = '#f1f5f9';
+                if (task.status === 'overdue') { statusColor = '#b91c1c'; statusBg = '#fef2f2'; }
+                else if (task.status === 'urgent') { statusColor = '#b45309'; statusBg = '#fffbeb'; }
+                else if (task.status === 'progress') { statusColor = '#1d4ed8'; statusBg = '#eff6ff'; }
+                else if (task.status === 'completed') { statusColor = '#047857'; statusBg = '#ecfdf5'; }
+
+                const sitesText = task.sites.length > 0 ? task.sites.join('、') : '—';
+                const ownersText = task.owners.length > 0 ? task.owners.join('、') : '—';
+                const fileText = task.fileName ? `<div style="font-size:10px; color:#4338ca; margin-top:4px;">📎 ${task.fileName}</div>` : '';
+
+                html += `
+                    <tr>
+                        <td style="border:1px solid #cbd5e1; padding:8px 6px; vertical-align:top;">${index + 1}</td>
+                        <td style="border:1px solid #cbd5e1; padding:8px 6px; vertical-align:top; word-break:break-word;">${task.meetingName || '—'}</td>
+                        <td style="border:1px solid #cbd5e1; padding:8px 6px; vertical-align:top; white-space:nowrap;">${task.meetingTimeDisplay}</td>
+                        <td style="border:1px solid #cbd5e1; padding:8px 6px; vertical-align:top; line-height:1.6; word-break:break-word;">
+                            <div style="font-weight:bold;">${sitesText}</div>
+                            <div style="color:#475569; margin-top:2px;">${ownersText}</div>
+                        </td>
+                        <td style="border:1px solid #cbd5e1; padding:8px 6px; vertical-align:top; font-weight:bold; line-height:1.6; word-break:break-word;">${task.decision || '—'}</td>
+                        <td style="border:1px solid #cbd5e1; padding:8px 6px; vertical-align:top; line-height:1.6; word-break:break-word;">${task.progress || '—'}</td>
+                        <td style="border:1px solid #cbd5e1; padding:8px 6px; vertical-align:top; white-space:nowrap;">${toRocDate(task.rawDate)}<div style="font-size:10px; color:#64748b; margin-top:2px;">${dueCountdownText(task)}</div></td>
+                        <td style="border:1px solid #cbd5e1; padding:8px 6px; vertical-align:top;">
+                            <span style="display:inline-block; background:${statusBg}; color:${statusColor}; padding:2px 6px; border-radius:4px; font-weight:bold; font-size:10px;">${task.statusText}</span>
+                            ${fileText}
+                        </td>
+                    </tr>
+                `;
+            });
+
+            html += `
+                    </tbody>
+                </table>
+                <div style="margin-top:16px; text-align:right; font-size:10px; color:#94a3b8;">
+                    會議暨交辦事項追蹤 Meeting Tracker • 中福/中毅會議暨交辦事項追蹤
+                </div>
+            `;
+
+            printContainer.innerHTML = html;
+            overlay.appendChild(printContainer);
+            document.body.appendChild(overlay);
+
+            const filename = `中福中毅會議暨交辦事項追蹤_${now.getFullYear()}${String(now.getMonth()+1).padStart(2,'0')}${String(now.getDate()).padStart(2,'0')}.pdf`;
+
+            const opt = {
+                margin: [10, 8, 10, 8],
+                filename: filename,
+                image: { type: 'jpeg', quality: 0.98 },
+                html2canvas: {
+                    scale: 2,
+                    useCORS: true,
+                    backgroundColor: '#ffffff',
+                    logging: false,
+                    scrollX: 0,
+                    scrollY: 0
+                },
+                jsPDF: { unit: 'mm', format: 'a4', orientation: 'landscape' },
+                pagebreak: { mode: ['css', 'legacy'] }
+            };
+
+            showToast('📄 正在產生 PDF...', '請稍候', 'amber');
+
+            requestAnimationFrame(() => {
+                requestAnimationFrame(() => {
+                    setTimeout(() => {
+                        html2pdf().set(opt).from(printContainer).save().then(() => {
+                            if (document.body.contains(overlay)) {
+                                document.body.removeChild(overlay);
+                            }
+                            showToast('✅ PDF 已匯出', `檔名：${filename}`, 'emerald');
+                        }).catch(err => {
+                            if (document.body.contains(overlay)) {
+                                document.body.removeChild(overlay);
+                            }
+                            console.error('PDF 匯出錯誤:', err);
+                            alert('PDF 匯出失敗：' + err.message);
+                        });
+                    }, 500);
+                });
+            });
+        }
+
+        // ========================================
+        // Toast 提示
+        // ========================================
+        function showToast(title, subtitle = '', color = 'indigo') {
+            const colorMap = {
+                emerald: 'bg-emerald-600',
+                indigo: 'bg-indigo-600',
+                amber: 'bg-amber-500',
+                red: 'bg-red-600'
+            };
+            const bg = colorMap[color] || colorMap.indigo;
+
+            const toast = document.createElement('div');
+            toast.className = `fixed top-20 right-6 z-[100] ${bg} text-white px-5 py-3.5 rounded-xl shadow-2xl transform transition-all duration-300 translate-x-full opacity-0 max-w-xs`;
+            toast.innerHTML = `
+                <div class="flex items-start space-x-2">
+                    <i class="fa-solid fa-circle-check mt-0.5"></i>
+                    <div>
+                        <p class="font-bold text-sm">${title}</p>
+                        ${subtitle ? `<p class="text-xs opacity-90 mt-0.5">${subtitle}</p>` : ''}
+                    </div>
+                </div>
+            `;
+            document.body.appendChild(toast);
+
+            requestAnimationFrame(() => {
+                toast.classList.remove('translate-x-full', 'opacity-0');
+            });
+
+            setTimeout(() => {
+                toast.classList.add('translate-x-full', 'opacity-0');
+                setTimeout(() => toast.remove(), 300);
+            }, 3000);
+        }
+
+        // ========================================
+        // 案場 / 負責人 多選元件
+        // ========================================
+        function renderSiteCheckboxes() {
+            const container = document.getElementById('siteCheckboxContainer');
+            if (!container) return;
+            container.innerHTML = '';
+
+            const allSites = [...new Set([
+                ...Object.keys(siteOwnerMap),
+                ...tasks.flatMap(t => t.sites)
+            ])].sort();
+
+            allSites.forEach(site => {
+                const checked = selectedSites.includes(site);
+                const row = document.createElement('div');
+                row.className = 'flex items-center justify-between hover:bg-white px-2 py-1.5 rounded-lg transition group/site';
+                row.innerHTML = `
+                    <label class="flex items-center space-x-2.5 cursor-pointer flex-1 min-w-0">
+                        <input type="checkbox" value="${site}" ${checked ? 'checked' : ''} onchange="toggleSiteSelection(this)" class="w-4 h-4 text-indigo-600 rounded border-slate-300 focus:ring-indigo-500 flex-shrink-0">
+                        <span class="text-sm text-slate-700 font-medium truncate">${site}</span>
+                    </label>
+                    <button onclick="deleteSiteOption('${site}')" class="text-slate-300 hover:text-red-500 p-1 rounded transition flex-shrink-0 opacity-0 group-hover/site:opacity-100" title="從清單中刪除案場">
+                        <i class="fa-solid fa-trash-can text-xs"></i>
+                    </button>
+                `;
+                container.appendChild(row);
+            });
+        }
+
+        function getAvailableOwners() {
+            if (selectedSites.length === 0) return [];
+            const ownerSet = new Set();
+            selectedSites.forEach(site => {
+                const owners = siteOwnerMap[site] || [];
+                owners.forEach(o => ownerSet.add(o));
+            });
+            selectedOwners.forEach(o => ownerSet.add(o));
+            return [...ownerSet].sort();
+        }
+
+        function renderOwnerCheckboxes() {
+            const container = document.getElementById('ownerCheckboxContainer');
+            const hint = document.getElementById('ownerLinkHint');
+            if (!container) return;
+            container.innerHTML = '';
+
+            const availableOwners = getAvailableOwners();
+
+            if (selectedSites.length === 0) {
+                hint.innerHTML = '<i class="fa-solid fa-circle-info mr-1"></i>請先選擇案場，負責人清單會依案場自動更新';
+                container.innerHTML = '<p class="text-xs text-slate-400 italic p-2">請先於上方選擇案場</p>';
+                return;
+            }
+
+            hint.innerHTML = `<i class="fa-solid fa-link mr-1 text-indigo-500"></i>依所選案場（${selectedSites.join('、')}）自動列出對應負責人`;
+
+            if (availableOwners.length === 0) {
+                container.innerHTML = '<p class="text-xs text-slate-400 italic p-2">所選案場尚無對應負責人，請使用下方自訂新增</p>';
+                return;
+            }
+
+            availableOwners.forEach(owner => {
+                const checked = selectedOwners.includes(owner);
+                const row = document.createElement('div');
+                row.className = 'flex items-center justify-between hover:bg-white px-2 py-1.5 rounded-lg transition group/owner';
+                row.innerHTML = `
+                    <label class="flex items-center space-x-2.5 cursor-pointer flex-1 min-w-0">
+                        <input type="checkbox" value="${owner}" ${checked ? 'checked' : ''} onchange="toggleOwnerSelection(this)" class="w-4 h-4 text-indigo-600 rounded border-slate-300 focus:ring-indigo-500 flex-shrink-0">
+                        <span class="text-sm text-slate-700 font-medium truncate">${owner}</span>
+                    </label>
+                    <button onclick="deleteOwnerOption('${owner}')" class="text-slate-300 hover:text-red-500 p-1 rounded transition flex-shrink-0 opacity-0 group-hover/owner:opacity-100" title="從清單中刪除負責人">
+                        <i class="fa-solid fa-trash-can text-xs"></i>
+                    </button>
+                `;
+                container.appendChild(row);
+            });
+        }
+
+        function deleteSiteOption(site) {
+            const usedCount = tasks.filter(t => t.sites.includes(site)).length;
+            let msg = `確定要從案場清單中刪除「${site}」嗎？`;
+            if (usedCount > 0) {
+                msg += `\n\n注意：目前有 ${usedCount} 筆任務使用此案場，刪除後這些任務的案場標籤將一併移除。`;
+            }
+            if (!confirm(msg)) return;
+
+            delete siteOwnerMap[site];
+            tasks.forEach(t => { t.sites = t.sites.filter(s => s !== site); });
+            selectedSites = selectedSites.filter(s => s !== site);
+
+            const remainingOwners = new Set();
+            selectedSites.forEach(s => { (siteOwnerMap[s] || []).forEach(o => remainingOwners.add(o)); });
+            selectedOwners = selectedOwners.filter(o => {
+                if (remainingOwners.has(o)) return true;
+                const isCustom = !Object.values(siteOwnerMap).flat().includes(o);
+                return isCustom;
+            });
+
+            renderSiteCheckboxes();
+            renderOwnerCheckboxes();
+            renderSelectedSitesPreview();
+            renderSelectedOwnersPreview();
+        }
+
+        function deleteOwnerOption(owner) {
+            const usedCount = tasks.filter(t => t.owners.includes(owner)).length;
+            let msg = `確定要從負責人清單中刪除「${owner}」嗎？`;
+            if (usedCount > 0) {
+                msg += `\n\n注意：目前有 ${usedCount} 筆任務指派給此負責人，刪除後這些任務的負責人標籤將一併移除。`;
+            }
+            if (!confirm(msg)) return;
+
+            Object.keys(siteOwnerMap).forEach(site => {
+                siteOwnerMap[site] = siteOwnerMap[site].filter(o => o !== owner);
+            });
+            tasks.forEach(t => { t.owners = t.owners.filter(o => o !== owner); });
+            selectedOwners = selectedOwners.filter(o => o !== owner);
+
+            renderOwnerCheckboxes();
+            renderSelectedOwnersPreview();
+        }
+
+        function toggleSiteSelection(checkbox) {
+            const site = checkbox.value;
+            if (checkbox.checked) {
+                if (!selectedSites.includes(site)) selectedSites.push(site);
+            } else {
+                selectedSites = selectedSites.filter(s => s !== site);
+                const remainingOwners = new Set();
+                selectedSites.forEach(s => { (siteOwnerMap[s] || []).forEach(o => remainingOwners.add(o)); });
+                selectedOwners = selectedOwners.filter(o => {
+                    if (remainingOwners.has(o)) return true;
+                    const isCustom = !Object.values(siteOwnerMap).flat().includes(o);
+                    return isCustom;
+                });
+            }
+            renderSiteCheckboxes();
+            renderOwnerCheckboxes();
+            renderSelectedSitesPreview();
+            renderSelectedOwnersPreview();
+        }
+
+        function toggleOwnerSelection(checkbox) {
+            if (checkbox.checked) {
+                if (!selectedOwners.includes(checkbox.value)) selectedOwners.push(checkbox.value);
+            } else {
+                selectedOwners = selectedOwners.filter(o => o !== checkbox.value);
+            }
+            renderSelectedOwnersPreview();
+        }
+
+        function renderSelectedSitesPreview() {
+            const preview = document.getElementById('selectedSitesPreview');
+            if (!preview) return;
+            if (selectedSites.length === 0) {
+                preview.innerHTML = '<span class="text-[11px] text-slate-400 italic">尚未選擇案場</span>';
+                return;
+            }
+            preview.innerHTML = selectedSites.map(site => `
+                <span class="inline-flex items-center space-x-1 bg-indigo-50 text-indigo-700 px-2.5 py-1 rounded-lg text-xs font-medium border border-indigo-100">
+                    <i class="fa-solid fa-location-dot"></i>
+                    <span>${site}</span>
+                    <button onclick="removeSite('${site}')" class="text-indigo-400 hover:text-red-500 ml-0.5"><i class="fa-solid fa-xmark"></i></button>
+                </span>
+            `).join('');
+        }
+
+        function renderSelectedOwnersPreview() {
+            const preview = document.getElementById('selectedOwnersPreview');
+            if (!preview) return;
+            if (selectedOwners.length === 0) {
+                preview.innerHTML = '<span class="text-[11px] text-slate-400 italic">尚未選擇負責人</span>';
+                return;
+            }
+            preview.innerHTML = selectedOwners.map(owner => `
+                <span class="inline-flex items-center space-x-1 bg-emerald-50 text-emerald-700 px-2.5 py-1 rounded-lg text-xs font-medium border border-emerald-100">
+                    <i class="fa-solid fa-user"></i>
+                    <span>${owner}</span>
+                    <button onclick="removeOwner('${owner}')" class="text-emerald-400 hover:text-red-500 ml-0.5"><i class="fa-solid fa-xmark"></i></button>
+                </span>
+            `).join('');
+        }
+
+        function removeSite(site) {
+            selectedSites = selectedSites.filter(s => s !== site);
+            const remainingOwners = new Set();
+            selectedSites.forEach(s => { (siteOwnerMap[s] || []).forEach(o => remainingOwners.add(o)); });
+            selectedOwners = selectedOwners.filter(o => {
+                if (remainingOwners.has(o)) return true;
+                const isCustom = !Object.values(siteOwnerMap).flat().includes(o);
+                return isCustom;
+            });
+            renderSiteCheckboxes();
+            renderOwnerCheckboxes();
+            renderSelectedSitesPreview();
+            renderSelectedOwnersPreview();
+        }
+
+        function removeOwner(owner) {
+            selectedOwners = selectedOwners.filter(o => o !== owner);
+            renderOwnerCheckboxes();
+            renderSelectedOwnersPreview();
+        }
+
+        function addCustomSite() {
+            const input = document.getElementById('newSiteCustomInput');
+            const val = input.value.trim();
+            if (!val) return;
+            if (!siteOwnerMap[val]) siteOwnerMap[val] = [];
+            if (!selectedSites.includes(val)) selectedSites.push(val);
+            input.value = '';
+            renderSiteCheckboxes();
+            renderOwnerCheckboxes();
+            renderSelectedSitesPreview();
+            renderSelectedOwnersPreview();
+        }
+
+        function addCustomOwner() {
+            const input = document.getElementById('newOwnerCustomInput');
+            const val = input.value.trim();
+            if (!val) return;
+            if (!selectedOwners.includes(val)) selectedOwners.push(val);
+            if (selectedSites.length > 0) {
+                const firstSite = selectedSites[0];
+                if (!siteOwnerMap[firstSite]) siteOwnerMap[firstSite] = [];
+                if (!siteOwnerMap[firstSite].includes(val)) siteOwnerMap[firstSite].push(val);
+            }
+            input.value = '';
+            renderOwnerCheckboxes();
+            renderSelectedOwnersPreview();
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            const siteInput = document.getElementById('newSiteCustomInput');
+            const ownerInput = document.getElementById('newOwnerCustomInput');
+            if (siteInput) {
+                siteInput.addEventListener('keydown', (e) => {
+                    if (e.key === 'Enter') { e.preventDefault(); addCustomSite(); }
+                });
+            }
+            if (ownerInput) {
+                ownerInput.addEventListener('keydown', (e) => {
+                    if (e.key === 'Enter') { e.preventDefault(); addCustomOwner(); }
+                });
+            }
+        });
+
+        function renderSiteFilter() {
+            const select = document.getElementById('siteFilterSelect');
+            if (!select) return;
+
+            const sites = [...new Set(tasks.flatMap(t => t.sites))].sort();
+            const previousValue = select.value;
+            select.innerHTML = '';
+
+            const allOption = document.createElement('option');
+            allOption.value = 'all';
+            allOption.text = '全部案場';
+            select.appendChild(allOption);
+
+            sites.forEach(site => {
+                const option = document.createElement('option');
+                option.value = site;
+                option.text = site;
+                select.appendChild(option);
+            });
+
+            if (previousValue && [...select.options].some(o => o.value === previousValue)) {
+                select.value = previousValue;
+            } else {
+                select.value = currentSite;
+            }
+        }
+
+        function renderOwnerFilter() {
+            const select = document.getElementById('ownerFilterSelect');
+            if (!select) return;
+
+            let owners;
+            if (currentSite === 'all') {
+                owners = [...new Set(tasks.flatMap(t => t.owners))].sort();
+            } else {
+                owners = (siteOwnerMap[currentSite] || []).slice().sort();
+            }
+
+            const previousValue = select.value;
+            select.innerHTML = '';
+
+            const allOption = document.createElement('option');
+            allOption.value = 'all';
+            allOption.text = currentSite === 'all' ? '全部負責人' : `全部（${currentSite}）`;
+            select.appendChild(allOption);
+
+            owners.forEach(owner => {
+                const option = document.createElement('option');
+                option.value = owner;
+                option.text = owner;
+                select.appendChild(option);
+            });
+
+            if (previousValue && [...select.options].some(o => o.value === previousValue)) {
+                select.value = previousValue;
+            } else {
+                select.value = currentOwner;
+            }
+        }
+
+        function handleSiteFilterChange(value) {
+            currentSite = value;
+            currentOwner = 'all';
+            renderOwnerFilter();
+            renderTasks(currentFilter);
+        }
+
+        function handleOwnerFilterChange(value) {
+            currentOwner = value;
+            renderTasks(currentFilter);
+        }
+
+        function handleStatusFilterChange(value) {
+            currentFilter = value;
+            renderTasks(value);
+        }
+
+        function resetFilters() {
+            currentSite = 'all';
+            currentOwner = 'all';
+            currentFilter = 'all';
+            document.getElementById('siteFilterSelect').value = 'all';
+            document.getElementById('ownerFilterSelect').value = 'all';
+            document.getElementById('statusFilterSelect').value = 'all';
+            renderOwnerFilter();
+            renderTasks('all');
+        }
+
+        function switchView(viewType) {
+            currentView = viewType;
+            const gridBtn = document.getElementById('view-grid-btn');
+            const listBtn = document.getElementById('view-list-btn');
+            const gridContainer = document.getElementById('tasks-container');
+            const tableContainer = document.getElementById('tasks-table-container');
+
+            if (viewType === 'grid') {
+                gridBtn.className = 'px-3.5 py-2 rounded-lg text-sm font-medium bg-white text-slate-800 shadow-xs transition flex items-center space-x-1.5';
+                listBtn.className = 'px-3.5 py-2 rounded-lg text-sm font-medium text-slate-600 hover:text-slate-800 transition flex items-center space-x-1.5';
+                gridContainer.classList.remove('hidden');
+                gridContainer.classList.add('grid');
+                tableContainer.classList.add('hidden');
+            } else {
+                listBtn.className = 'px-3.5 py-2 rounded-lg text-sm font-medium bg-white text-slate-800 shadow-xs transition flex items-center space-x-1.5';
+                gridBtn.className = 'px-3.5 py-2 rounded-lg text-sm font-medium text-slate-600 hover:text-slate-800 transition flex items-center space-x-1.5';
+                tableContainer.classList.remove('hidden');
+                gridContainer.classList.add('hidden');
+                gridContainer.classList.remove('grid');
+            }
+            renderTasks(currentFilter);
+        }
+
+        function renderTasks(filter = 'all') {
+            currentFilter = filter;
+            refreshTaskStatuses();
+            updateCounters();
+
+            const container = document.getElementById('tasks-container');
+            const tableContainer = document.getElementById('tasks-table-container');
+
+            container.innerHTML = '';
+            tableContainer.innerHTML = '';
+
+            const statusSelect = document.getElementById('statusFilterSelect');
+            if (statusSelect) statusSelect.value = filter;
+
+            const filteredTasks = tasks.filter(t => {
+                if (filter !== 'all' && t.status !== filter) return false;
+                if (currentSite !== 'all' && !t.sites.includes(currentSite)) return false;
+                if (currentOwner !== 'all' && !t.owners.includes(currentOwner)) return false;
+                return true;
+            });
+
+            const resultCountEl = document.getElementById('resultCount');
+            const isFiltering = (filter !== 'all' || currentSite !== 'all' || currentOwner !== 'all');
+            if (isFiltering) {
+                resultCountEl.innerText = `符合 ${filteredTasks.length} 筆`;
+                resultCountEl.classList.remove('hidden');
+            } else {
+                resultCountEl.classList.add('hidden');
+            }
+
+            if (filteredTasks.length === 0) {
+                const emptyHTML = `
+                    <div class="py-16 text-center text-slate-400 col-span-full">
+                        <i class="fa-solid fa-folder-open text-4xl mb-3"></i>
+                        <p class="text-base font-medium">目前沒有符合查詢條件的待辦事項</p>
+                        <button onclick="resetFilters()" class="mt-3 text-sm text-indigo-600 hover:text-indigo-800 font-medium underline">重設查詢條件</button>
+                    </div>
+                `;
+                container.innerHTML = emptyHTML;
+                tableContainer.innerHTML = emptyHTML;
+                return;
+            }
+
+            if (currentView === 'grid') {
+                filteredTasks.forEach(task => {
+                    let badgeClass = 'bg-slate-100 text-slate-700 text-sm px-3 py-1';
+                    let indicatorDot = 'bg-slate-400';
+
+                    if (task.status === 'overdue') {
+                        badgeClass = 'bg-red-50 text-red-700 border border-red-100 text-sm px-3 py-1';
+                        indicatorDot = 'bg-red-500';
+                    } else if (task.status === 'urgent') {
+                        badgeClass = 'bg-amber-50 text-amber-700 border border-amber-100 text-sm px-3 py-1';
+                        indicatorDot = 'bg-amber-500';
+                    } else if (task.status === 'progress') {
+                        badgeClass = 'bg-blue-50 text-blue-700 border border-blue-100 text-sm px-3 py-1';
+                        indicatorDot = 'bg-blue-500';
+                    } else if (task.status === 'completed') {
+                        badgeClass = 'bg-emerald-50 text-emerald-700 border border-emerald-100 text-sm px-3 py-1';
+                        indicatorDot = 'bg-emerald-500';
+                    }
+
+                    const sitesTags = task.sites.map(s => `
+                        <span class="inline-flex items-center bg-slate-100 text-slate-600 px-2 py-0.5 rounded-md text-xs font-medium">
+                            <i class="fa-solid fa-location-dot mr-1 text-slate-400"></i>${s}
+                        </span>
+                    `).join(' ');
+
+                    const ownersTags = task.owners.length > 0 ? task.owners.map(o => `
+                        <span class="inline-flex items-center bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded-md text-xs font-medium border border-emerald-100">
+                            <i class="fa-solid fa-user mr-1"></i>${o}
+                        </span>
+                    `).join(' ') : '<span class="text-xs text-slate-400 italic">無指派</span>';
+
+                    const fileHTML = task.fileName ? `
+                        <div class="mt-3 flex items-center space-x-2 text-sm text-indigo-600 bg-indigo-50/70 px-3.5 py-2 rounded-xl border border-indigo-100">
+                            <i class="fa-solid fa-paperclip text-indigo-500 text-base"></i>
+                            <span class="truncate font-medium">${task.fileName}</span>
+                        </div>
+                    ` : '';
+
+                    const cardHTML = `
+                        <div class="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm hover:shadow-md hover:border-indigo-300 transition flex flex-col justify-between group">
+                            <div>
+                                <div class="flex items-center justify-between text-sm text-slate-500 pb-3 border-b border-slate-100">
+                                    <div class="flex flex-wrap gap-1.5">${sitesTags}</div>
+                                    <div class="flex items-center space-x-2.5 flex-shrink-0">
+                                        <span class="font-medium text-xs"><i class="fa-solid fa-users mr-1 text-slate-400"></i>${task.meetingName || '—'}</span>
+                                        <span class="font-medium text-xs"><i class="fa-regular fa-calendar mr-1 text-slate-400"></i>${task.meetingTimeDisplay}</span>
+                                        <div class="flex items-center space-x-1.5">
+                                            <button onclick="openEditTaskModal(${task.id})" class="text-slate-400 hover:text-indigo-600 p-1.5 rounded hover:bg-slate-50 transition" title="編輯全部欄位"><i class="fa-solid fa-pen text-sm"></i></button>
+                                            <button onclick="deleteTask(${task.id})" class="text-slate-400 hover:text-red-600 p-1.5 rounded hover:bg-slate-50 transition" title="刪除事項"><i class="fa-solid fa-trash text-sm"></i></button>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="mt-4">
+                                    <p class="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-1">會議暨交辦內容</p>
+                                    <h3 class="font-bold text-slate-900 text-lg group-hover:text-indigo-600 transition flex items-start leading-snug">
+                                        <span class="inline-block mt-[5px] mr-3 w-4 h-4 rounded-full ${indicatorDot} flex-shrink-0"></span>
+                                        <span>${task.decision}</span>
+                                    </h3>
+                                </div>
+                                <div class="mt-4 bg-slate-50 p-3.5 rounded-xl border border-slate-100 text-sm text-slate-700 group/reply relative">
+                                    <div class="flex items-center justify-between mb-1.5">
+                                        <span class="font-bold text-slate-800"><i class="fa-solid fa-reply mr-1.5 text-indigo-500"></i>執行進度：</span>
+                                    </div>
+                                    <p class="text-slate-700 font-medium italic mt-1 cursor-pointer hover:bg-slate-100/80 p-1.5 rounded transition leading-relaxed" onclick="editReply(${task.id})" title="點擊編輯執行進度">${task.progress || '點此新增執行進度...'}</p>
+                                </div>
+                                ${fileHTML}
+                            </div>
+                            <div class="mt-6 pt-4 border-t border-slate-100 flex items-center justify-between text-sm">
+                                <div class="flex flex-wrap gap-1.5">${ownersTags}</div>
+                                <div class="flex items-center space-x-2 flex-shrink-0">
+                                    <span class="flex items-center text-slate-600 font-medium text-xs"><i class="fa-solid fa-clock text-slate-400 mr-1"></i>${toRocDate(task.rawDate)}<span class="ml-1.5 text-slate-500">（${dueCountdownText(task)}）</span></span>
+                                    <span class="rounded-xl font-bold ${badgeClass}">
+                                        ${task.statusText}
+                                    </span>
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                    container.innerHTML += cardHTML;
+                });
+            } else {
+                let tableRows = '';
+                filteredTasks.forEach((task, index) => {
+                    let badgeClass = 'bg-slate-100 text-slate-700 px-3 py-1 text-sm font-bold';
+                    let indicatorDot = 'bg-slate-400';
+
+                    if (task.status === 'overdue') {
+                        badgeClass = 'bg-red-50 text-red-700 border border-red-100 px-3 py-1 text-sm font-bold';
+                        indicatorDot = 'bg-red-500';
+                    } else if (task.status === 'urgent') {
+                        badgeClass = 'bg-amber-50 text-amber-700 border border-amber-100 px-3 py-1 text-sm font-bold';
+                        indicatorDot = 'bg-amber-500';
+                    } else if (task.status === 'progress') {
+                        badgeClass = 'bg-blue-50 text-blue-700 border border-blue-100 px-3 py-1 text-sm font-bold';
+                        indicatorDot = 'bg-blue-500';
+                    } else if (task.status === 'completed') {
+                        badgeClass = 'bg-emerald-50 text-emerald-700 border border-emerald-100 px-3 py-1 text-sm font-bold';
+                        indicatorDot = 'bg-emerald-500';
+                    }
+
+                    const fileCell = task.fileName ? `
+                        <span class="inline-flex items-center space-x-1.5 text-indigo-600 bg-indigo-50 px-2.5 py-1 rounded-lg text-xs font-medium" title="${task.fileName}">
+                            <i class="fa-solid fa-paperclip"></i>
+                            <span class="truncate max-w-[100px]">${task.fileName}</span>
+                        </span>
+                    ` : `<span class="text-slate-400 italic text-xs">無</span>`;
+
+                    const sitesCell = task.sites.map(s => `
+                        <span class="inline-flex items-center bg-slate-100 text-slate-600 px-2 py-0.5 rounded-md text-xs font-medium mb-0.5 mr-0.5">
+                            <i class="fa-solid fa-location-dot mr-1 text-slate-400"></i>${s}
+                        </span>
+                    `).join('');
+
+                    const ownersCell = task.owners.length > 0 ? task.owners.map(o => `
+                        <span class="inline-flex items-center bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded-md text-xs font-medium border border-emerald-100 mb-0.5 mr-0.5">
+                            <span class="w-4 h-4 rounded-full bg-emerald-200 text-emerald-800 flex items-center justify-center font-bold text-[9px] mr-1">${o.charAt(0)}</span>${o}
+                        </span>
+                    `).join('') : '<span class="text-slate-400 italic text-xs">無指派</span>';
+
+                    tableRows += `
+                        <tr class="hover:bg-slate-50/90 transition border-b border-slate-100 text-sm">
+                            <td class="py-4 px-3 font-semibold text-slate-500 whitespace-nowrap">#${index + 1}</td>
+                            <td class="py-4 px-3 text-slate-700 font-medium">${task.meetingName || '<span class="text-slate-400 italic text-xs">—</span>'}</td>
+                            <td class="py-4 px-3 text-slate-700 font-medium whitespace-nowrap">${task.meetingTimeDisplay}</td>
+                            <td class="py-4 px-3">
+                                <div>${sitesCell || '<span class="text-slate-400 italic text-xs">無</span>'}</div>
+                                <div class="mt-1.5">${ownersCell}</div>
+                            </td>
+                            <td class="py-4 px-4 font-bold text-slate-900 text-base">
+                                <div class="flex items-start">
+                                    <span class="inline-block mt-[5px] mr-3 w-4 h-4 rounded-full ${indicatorDot} flex-shrink-0"></span>
+                                    <span class="leading-relaxed">${task.decision}</span>
+                                </div>
+                            </td>
+                            <td class="py-4 px-4 text-slate-800 min-w-[280px]">
+                                <div onclick="editReply(${task.id})" class="cursor-pointer bg-slate-50 hover:bg-indigo-50 hover:border-indigo-300 px-3 py-2 rounded-xl border border-slate-200/90 transition" title="點選即可編修執行進度">
+                                    <span class="italic text-slate-700 font-medium text-sm leading-relaxed break-words">${task.progress || '<span class="text-slate-400">點此新增進度...</span>'}</span>
+                                </div>
+                            </td>
+                            <td class="py-4 px-3 text-slate-700 font-medium whitespace-nowrap">${toRocDate(task.rawDate)}${dueCountdownHTML(task)}</td>
+                            <td class="py-4 px-3 whitespace-nowrap">
+                                <div class="flex flex-col space-y-1.5">
+                                    <span class="rounded-xl ${badgeClass} w-fit">${task.statusText}</span>
+                                    <div class="mt-0.5">${fileCell}</div>
+                                </div>
+                            </td>
+                            <td class="py-4 px-2 text-center sticky right-0 bg-white border-l border-slate-200 shadow-[-6px_0_8px_-6px_rgba(15,23,42,0.15)]">
+                                <div class="flex flex-nowrap items-center justify-center gap-2">
+                                    <button onclick="openEditTaskModal(${task.id})" class="w-12 flex-shrink-0 flex flex-col items-center py-1.5 text-indigo-700 bg-indigo-50 hover:bg-indigo-100 border-2 border-indigo-300 rounded-xl transition" title="編輯完整欄位" aria-label="編輯">
+                                        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
+                                        <span class="text-[11px] font-bold leading-tight mt-0.5">編輯</span>
+                                    </button>
+                                    <button onclick="deleteTask(${task.id})" class="w-12 flex-shrink-0 flex flex-col items-center py-1.5 text-red-700 bg-red-50 hover:bg-red-100 border-2 border-red-300 rounded-xl transition" title="刪除" aria-label="刪除">
+                                        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/></svg>
+                                        <span class="text-[11px] font-bold leading-tight mt-0.5">刪除</span>
+                                    </button>
+                                </div>
+                            </td>
+                        </tr>
+                    `;
+                });
+
+                tableContainer.innerHTML = `
+                    <table class="w-full min-w-[1280px] text-left border-collapse table-fixed">
+                        <colgroup>
+                            <col style="width: 4%">
+                            <col style="width: 10%">
+                            <col style="width: 8%">
+                            <col style="width: 14%">
+                            <col style="width: 19%">
+                            <col style="width: 18%">
+                            <col style="width: 8%">
+                            <col style="width: 8%">
+                            <col style="width: 11%">
+                        </colgroup>
+                        <thead>
+                            <tr class="bg-slate-50 border-b border-slate-200 text-slate-500 text-sm font-bold">
+                                <th class="py-3.5 px-3">#</th>
+                                <th class="py-3.5 px-3">會議暨交辦來源</th>
+                                <th class="py-3.5 px-3">建檔日期</th>
+                                <th class="py-3.5 px-3">案場／負責人</th>
+                                <th class="py-3.5 px-4">會議暨交辦內容</th>
+                                <th class="py-3.5 px-4">執行進度</th>
+                                <th class="py-3.5 px-3">預定完成日</th>
+                                <th class="py-3.5 px-3">管制作業</th>
+                                <th class="py-3.5 px-2 text-center sticky right-0 bg-slate-50 border-l border-slate-200">管理者</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${tableRows}
+                        </tbody>
+                    </table>
+                `;
+            }
+        }
+
+        function filterTasks(status) {
+            currentFilter = status;
+            renderTasks(status);
+        }
+
+        let replyFileRemoved = false;
+
+        function editReply(taskId) {
+            const task = tasks.find(t => t.id === taskId);
+            if (!task) return;
+
+            replyFileRemoved = false;
+            document.getElementById('editReplyTaskId').value = task.id;
+            document.getElementById('editReplyTaskTitle').innerText = task.decision;
+            document.getElementById('editReplyText').value = task.progress || '';
+            document.getElementById('editReplyFile').value = '';
+
+            const existingFileBox = document.getElementById('editReplyExistingFile');
+            const existingFileName = document.getElementById('editReplyExistingFileName');
+            if (task.fileName) {
+                existingFileName.innerText = task.fileName;
+                existingFileBox.classList.remove('hidden');
+                existingFileBox.classList.add('flex');
+            } else {
+                existingFileBox.classList.add('hidden');
+                existingFileBox.classList.remove('flex');
+            }
+
+            document.getElementById('editReplyModal').classList.remove('hidden');
+        }
+
+        function closeEditReplyModal() {
+            document.getElementById('editReplyModal').classList.add('hidden');
+        }
+
+        function removeReplyFile() {
+            if (confirm('確定要移除此附件嗎？')) {
+                replyFileRemoved = true;
+                const existingFileBox = document.getElementById('editReplyExistingFile');
+                existingFileBox.classList.add('hidden');
+                existingFileBox.classList.remove('flex');
+            }
+        }
+
+        function saveReply() {
+            const taskId = document.getElementById('editReplyTaskId').value;
+            const task = tasks.find(t => t.id == taskId);
+            if (!task) return;
+
+            const progressText = document.getElementById('editReplyText').value.trim();
+            const fileInput = document.getElementById('editReplyFile');
+
+            task.progress = progressText;
+
+            if (replyFileRemoved && (!fileInput.files || fileInput.files.length === 0)) {
+                task.fileName = '';
+            }
+            if (fileInput.files && fileInput.files.length > 0) {
+                task.fileName = fileInput.files[0].name;
+            }
+
+            renderTasks(currentFilter);
+            closeEditReplyModal();
+        }
+
+        function deleteTask(taskId) {
+            const task = tasks.find(t => t.id === taskId);
+            if (!task) return;
+
+            if (confirm(`確定要刪除「${task.decision}」這項追蹤紀錄嗎？`)) {
+                tasks = tasks.filter(t => t.id !== taskId);
+                renderSiteFilter();
+                renderOwnerFilter();
+                renderTasks(currentFilter);
+            }
+        }
+
+        function openNewTaskModal() {
+            document.getElementById('modalTitle').innerText = '新增會議暨交辦事項追蹤';
+            document.getElementById('editTaskId').value = '';
+            renderMeetingNameSelect();
+            document.getElementById('newMeetingNameCustomInput').value = '';
+            document.getElementById('newTaskMeetingTime').value = todayISO();
+
+            selectedSites = [];
+            selectedOwners = [];
+
+            renderSiteCheckboxes();
+            renderOwnerCheckboxes();
+            renderSelectedSitesPreview();
+            renderSelectedOwnersPreview();
+
+            document.getElementById('newSiteCustomInput').value = '';
+            document.getElementById('newOwnerCustomInput').value = '';
+
+            document.getElementById('newTaskDecision').value = '';
+            document.getElementById('newTaskProgress').value = '';
+            document.getElementById('newTaskDate').value = todayISO();
+            document.getElementById('newTaskIsCompleted').checked = false;
+            document.getElementById('autoStatusDisplay').innerHTML = '<span class="w-2.5 h-2.5 rounded-full bg-blue-500 mr-2"></span> 管制辦理中';
+            document.getElementById('newTaskFile').value = '';
+            document.getElementById('existingFileName').classList.add('hidden');
+            document.getElementById('newTaskModal').classList.remove('hidden');
+        }
+
+        function openEditTaskModal(taskId) {
+            const task = tasks.find(t => t.id === taskId);
+            if (!task) return;
+
+            document.getElementById('modalTitle').innerText = '編輯會議暨交辦事項追蹤';
+            document.getElementById('editTaskId').value = task.id;
+            renderMeetingNameSelect(task.meetingName);
+            document.getElementById('newMeetingNameCustomInput').value = '';
+            document.getElementById('newTaskMeetingTime').value = task.meetingTime || '2026-08-04';
+
+            selectedSites = [...task.sites];
+            selectedOwners = [...task.owners];
+
+            renderSiteCheckboxes();
+            renderOwnerCheckboxes();
+            renderSelectedSitesPreview();
+            renderSelectedOwnersPreview();
+
+            document.getElementById('newSiteCustomInput').value = '';
+            document.getElementById('newOwnerCustomInput').value = '';
+
+            document.getElementById('newTaskDecision').value = task.decision;
+            document.getElementById('newTaskProgress').value = task.progress || '';
+
+            document.getElementById('newTaskDate').value = task.rawDate || '2026-09-23';
+            const isCompleted = task.status === 'completed';
+            document.getElementById('newTaskIsCompleted').checked = isCompleted;
+
+            const computed = calculateTaskStatus(task.rawDate, isCompleted);
+            let dotColor = 'bg-blue-500';
+            if (computed.status === 'overdue') dotColor = 'bg-red-500';
+            else if (computed.status === 'urgent') dotColor = 'bg-amber-500';
+            else if (computed.status === 'completed') dotColor = 'bg-emerald-500';
+            document.getElementById('autoStatusDisplay').innerHTML = `<span class="w-2.5 h-2.5 rounded-full ${dotColor} mr-2"></span> ${computed.statusText}`;
+
+            document.getElementById('newTaskFile').value = '';
+
+            const fileSpan = document.getElementById('existingFileName');
+            if (task.fileName) {
+                fileSpan.querySelector('span').innerText = task.fileName;
+                fileSpan.classList.remove('hidden');
+            } else {
+                fileSpan.classList.add('hidden');
+            }
+
+            document.getElementById('newTaskModal').classList.remove('hidden');
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            const dateInput = document.getElementById('newTaskDate');
+            const completedCheckbox = document.getElementById('newTaskIsCompleted');
+
+            const updatePreviewStatus = () => {
+                const dateVal = dateInput.value;
+                const isComp = completedCheckbox.checked;
+                const computed = calculateTaskStatus(dateVal, isComp);
+                let dotColor = 'bg-blue-500';
+                if (computed.status === 'overdue') dotColor = 'bg-red-500';
+                else if (computed.status === 'urgent') dotColor = 'bg-amber-500';
+                else if (computed.status === 'completed') dotColor = 'bg-emerald-500';
+                const disp = document.getElementById('autoStatusDisplay');
+                if (disp) {
+                    disp.innerHTML = `<span class="w-2.5 h-2.5 rounded-full ${dotColor} mr-2"></span> ${computed.statusText}`;
+                }
+            };
+
+            if (dateInput) dateInput.addEventListener('change', updatePreviewStatus);
+            if (completedCheckbox) completedCheckbox.addEventListener('change', updatePreviewStatus);
+        });
+
+        function closeNewTaskModal() {
+            document.getElementById('newTaskModal').classList.add('hidden');
+        }
+
+        function saveTask() {
+            const editId = document.getElementById('editTaskId').value;
+            const meetingNameVal = document.getElementById('newTaskMeetingName').value;
+            const meetingTimeVal = document.getElementById('newTaskMeetingTime').value;
+            const decision = document.getElementById('newTaskDecision').value.trim();
+            const progress = document.getElementById('newTaskProgress').value.trim();
+
+            if (!meetingNameVal) {
+                alert('請選擇或新增會議暨交辦來源');
+                return;
+            }
+
+            if (!decision) {
+                alert('請輸入會議暨交辦內容');
+                return;
+            }
+
+            if (selectedSites.length === 0) {
+                alert('請至少選擇一個案場');
+                return;
+            }
+
+            const dateVal = document.getElementById('newTaskDate').value;
+            const isCompleted = document.getElementById('newTaskIsCompleted').checked;
+            const fileInput = document.getElementById('newTaskFile');
+
+            const computedStatus = calculateTaskStatus(dateVal, isCompleted);
+            const status = computedStatus.status;
+            const statusText = computedStatus.statusText;
+
+            const dateParts = dateVal.split('-');
+            const formattedDate = dateParts.length === 3 ? `${parseInt(dateParts[1])}/${parseInt(dateParts[2])}` : '9/23';
+
+            let meetingTimeDisplay = meetingTimeVal;
+            const mtParts = meetingTimeVal.split('-');
+            if (mtParts.length === 3) {
+                meetingTimeDisplay = `${mtParts[0]}/${parseInt(mtParts[1])}/${parseInt(mtParts[2])}`;
+            }
+
+            let attachedFileName = '';
+            if (fileInput.files && fileInput.files.length > 0) {
+                attachedFileName = fileInput.files[0].name;
+            }
+
+            if (editId) {
+                const task = tasks.find(t => t.id == editId);
+                if (task) {
+                    task.meetingName = meetingNameVal;
+                    task.meetingTime = meetingTimeVal;
+                    task.meetingTimeDisplay = meetingTimeDisplay;
+                    task.sites = [...selectedSites];
+                    task.owners = [...selectedOwners];
+                    task.decision = decision;
+                    task.progress = progress;
+                    task.rawDate = dateVal;
+                    task.dueDate = formattedDate;
+                    task.status = status;
+                    task.statusText = statusText;
+                    if (attachedFileName) {
+                        task.fileName = attachedFileName;
+                    }
+                }
+            } else {
+                const newTask = {
+                    id: tasks.length > 0 ? Math.max(...tasks.map(t => t.id)) + 1 : 1,
+                    meetingName: meetingNameVal,
+                    meetingTime: meetingTimeVal,
+                    meetingTimeDisplay: meetingTimeDisplay,
+                    sites: [...selectedSites],
+                    owners: [...selectedOwners],
+                    decision: decision,
+                    progress: progress,
+                    rawDate: dateVal,
+                    dueDate: formattedDate,
+                    status: status,
+                    statusText: statusText,
+                    fileName: attachedFileName
+                };
+                tasks.unshift(newTask);
+            }
+
+            renderSiteFilter();
+            renderOwnerFilter();
+            renderTasks(currentFilter);
+            closeNewTaskModal();
+        }
+
+        window.onload = function() {
+            const gridBtn = document.getElementById('view-grid-btn');
+            const listBtn = document.getElementById('view-list-btn');
+            const gridContainer = document.getElementById('tasks-container');
+            const tableContainer = document.getElementById('tasks-table-container');
+
+            listBtn.className = 'px-3.5 py-2 rounded-lg text-sm font-medium bg-white text-slate-800 shadow-xs transition flex items-center space-x-1.5';
+            gridBtn.className = 'px-3.5 py-2 rounded-lg text-sm font-medium text-slate-600 hover:text-slate-800 transition flex items-center space-x-1.5';
+            tableContainer.classList.remove('hidden');
+            gridContainer.classList.add('hidden');
+            gridContainer.classList.remove('grid');
+
+            const todayEl = document.getElementById('todayDisplay');
+            if (todayEl) todayEl.innerText = toRocDate(todayISO());
+
+            renderSiteFilter();
+            renderOwnerFilter();
+            renderTasks('all');
+        };
+    </script>
+</body>
+</html>
